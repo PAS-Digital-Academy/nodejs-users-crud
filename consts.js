@@ -1,1 +1,1 @@
-export const dbFile = '/home/subrata/database.json';
+export const dburi = "mongodb+srv://subrata:UEdcYpJ5vOnde4O9@cluster0.gqsen.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"

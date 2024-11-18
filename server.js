@@ -1,7 +1,7 @@
 import express from 'express';
-import fs from 'fs';
-import { dbFile } from './consts.js';
 import { apiKeyMiddleware } from './middleware.js';
+import { userCollection } from './db.js';
+import { ObjectId } from 'mongodb';
 
 const app = express()
 
@@ -9,97 +9,115 @@ app.use(express.json())
 const port = 6550
 
 
+app.post("/register", async (req, res) => {
+    try {
+        const { username, password, name } = req.body;
 
-app.post("/register", (req, res) => {
-    const { username, password, name } = req.body;
-    let dbcontent = [];
+        const isExists = await userCollection.findOne({ username });
 
-    const fileContent = fs.readFileSync(dbFile).toString();
-
-    if (fileContent) {
-        dbcontent = JSON.parse(fileContent);
-        if (dbcontent.find(user => user.username === username)) {
+        if (isExists) {
             return res.status(400).send("User Already Exists")
         }
-    }
-    dbcontent.push({ username, password, name })
 
-    fs.writeFileSync(dbFile, JSON.stringify(dbcontent))
+        await userCollection.insertOne({ username, password, name });
 
-    res.send("User Registered Successfully")
-})
-
-
-app.post("/login", (req, res) => {
-    const { username, password } = req.body;
-    const fileContent = fs.readFileSync(dbFile).toString();
-    const userData = JSON.parse(fileContent);
-    if (userData.find(user => user.username === username && user.password === password)) {
-        res.json({
-            token: btoa(`${username}:${password}`)
-        })
-    } else {
-        res.status(400).send("Invalid Credentials")
+        res.send("User Registered Successfully")
+    } catch (error) {
+        console.log(error);
+        res.send("Something went wrong")
     }
 })
 
-app.get("/users", apiKeyMiddleware, (req, res) => {
-    const userData = req['user'];
-    let allUser = [];
-    userData.forEach(user => {
-        allUser.push({
-            username: user.username,
-            name: user.name
-        })
-    })
-    res.json({
-        count: allUser.length,
-        users: allUser
-    })
-})
+
+app.post("/login", async (req, res) => {
+    try {
+        const { username, password } = req.body;
+
+        const user = await userCollection.findOne({ username });
 
 
-app.put("/users", apiKeyMiddleware, (req, res) => {
-
-    let currentUser = req['currentUser'];
-    let users = req['user'];
-
-    const { name, password } = req.body;
-
-    currentUser.name = name ?? currentUser.name;
-    currentUser.password = password ?? currentUser.password;
-
-
-    let updatedUsers = users.map(user => {
-        if (user.username === currentUser.username) {
-            return currentUser;
+        if (user && user.password === password) {
+            res.json({
+                token: btoa(`${user?._id}`)
+            })
         } else {
-            return user;
+            res.status(400).send("Invalid Credentials")
         }
-    })
+    } catch (error) {
+        console.log(error);
+        res.send("Something went wrong")
+    }
+})
+
+app.get("/users", apiKeyMiddleware, async (req, res) => {
+    try {
+        const allUser = await userCollection.find({}).toArray();
+        res.json({
+            count: allUser.length,
+            users: allUser
+        })
+    } catch (error) {
+        console.log(error);
+        res.send("Something went wrong")
+    }
+})
 
 
-    fs.writeFileSync(dbFile, JSON.stringify(updatedUsers))
+app.put("/users", apiKeyMiddleware, async (req, res) => {
 
-    res.json({
-        message: "User Updated Successfully",
-        users: currentUser
-    })
+    try {
+        let currentUser = req['currentUser'];
+        const { name, password } = req.body;
+
+        let updateData = {};
+
+        if (name) {
+            updateData["name"] = name;
+        }
+        if (password) {
+            updateData["password"] = password;
+        }
+
+        const updatedUser = await userCollection.findOneAndUpdate({
+            _id: {
+                $eq: new ObjectId(currentUser._id)
+            }
+        },
+            { $set: updateData },
+            { returnDocument: 'after' }
+        )
+
+        res.json({
+            message: "User Updated Successfully",
+            users: updatedUser
+        })
+    } catch (error) {
+        console.log(error);
+        res.send("Something went wrong")
+    }
 
 
 })
 
 
-app.delete("/users", apiKeyMiddleware, (req, res) => {
-    let users = req['user'];
-    let currentUser = req['currentUser'];
-    let updatedUsers = users.filter(user => user.username !== currentUser.username);
+app.delete("/users", apiKeyMiddleware, async (req, res) => {
+    try {
+        let currentUser = req['currentUser'];
 
-    fs.writeFileSync(dbFile, JSON.stringify(updatedUsers))
-    res.json({
-        message: "User Deleted Successfully",
-        users: currentUser
-    })
+        await userCollection.findOneAndDelete({
+            _id: {
+                $eq: new ObjectId(currentUser._id)
+            }
+        })
+
+        res.json({
+            message: "User Deleted Successfully",
+            users: currentUser
+        })
+    } catch (error) {
+        console.log(error);
+        res.send("Something went wrong")
+    }
 })
 
 

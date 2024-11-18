@@ -1,7 +1,7 @@
-import { dbFile } from "./consts.js";
-import fs from "fs";
+import { userCollection } from "./db.js";
+import { ObjectId } from "mongodb";
 
-export const apiKeyMiddleware = (req, res, next) => {
+export const apiKeyMiddleware = async (req, res, next) => {
     let apiKey = req.headers["x-api-key"];
     if (!apiKey) {
         return res.status(403).send("Access Denied");
@@ -9,19 +9,16 @@ export const apiKeyMiddleware = (req, res, next) => {
 
 
     let decodedApiKey = atob(apiKey);
-    let [username, password] = decodedApiKey.split(":");
 
+    if (decodedApiKey.length !== 24) {
+        return res.status(400).send("Invalid Api Key")
+    }
 
-    const fileContent = fs.readFileSync(dbFile).toString();
-    const userData = JSON.parse(fileContent);
+    const userData = await userCollection.findOne({ _id: new ObjectId(decodedApiKey) });
 
+    if (userData) {
 
-    if (userData.find(user => user.username === username && user.password === password)) {
-        req['user'] = userData;
-
-
-        const currentUser = userData.find(user => user.username === username);
-        req['currentUser'] = currentUser;
+        req['currentUser'] = userData;
 
 
         next();
